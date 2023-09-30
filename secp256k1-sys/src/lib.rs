@@ -82,6 +82,16 @@ pub type SchnorrNonceFn = Option<unsafe extern "C" fn(
     data: *mut c_void,
 ) -> c_int>;
 
+pub type EllswiftECDHHashFn = Option<
+    unsafe extern "C" fn(
+        output: *mut c_uchar,
+        x32: *const c_uchar,
+        ell_a64: *const c_uchar,
+        ell_b64: *const c_uchar,
+        data: *mut c_void,
+    ) -> c_int,
+>;
+
 /// Data structure that contains additional arguments for schnorrsig_sign_custom.
 #[repr(C)]
 pub struct SchnorrSigExtraParams {
@@ -517,6 +527,32 @@ impl core::hash::Hash for Keypair {
     }
 }
 
+pub struct XOSharedSecret(pub [u8; 32]);
+
+impl XOSharedSecret {
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+    pub fn as_mut_bytes(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl_array_newtype!(XOSharedSecret, u8, 32);
+impl_raw_debug!(XOSharedSecret);
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ElligatorSwift([u8; 64]);
+
+impl ElligatorSwift {
+    pub fn from_array(arr: [u8; 64]) -> Self {
+        ElligatorSwift(arr)
+    }
+}
+
+impl_array_newtype!(ElligatorSwift, u8, 64);
+impl_raw_debug!(ElligatorSwift);
+
 extern "C" {
     /// Default ECDH hash function
     #[cfg_attr(not(rust_secp_no_symbol_renaming), link_name = "rustsecp256k1_v0_9_0_ecdh_hash_function_default")]
@@ -534,6 +570,10 @@ extern "C" {
     #[cfg_attr(not(rust_secp_no_symbol_renaming), link_name = "rustsecp256k1_v0_9_0_context_no_precomp")]
     pub static secp256k1_context_no_precomp: *const Context;
 
+    /// Default ECDH hash function for BIP324 key establishment
+    #[cfg_attr(not(rust_secp_no_symbol_renaming), link_name = "rustsecp256k1_v0_9_0_ellswift_xdh_hash_function_bip324")]
+    pub static secp256k1_ellswift_xdh_hash_function_bip324: EllswiftECDHHashFn;
+    
     // Contexts
     #[cfg_attr(not(rust_secp_no_symbol_renaming), link_name = "rustsecp256k1_v0_9_0_context_preallocated_destroy")]
     pub fn secp256k1_context_preallocated_destroy(cx: NonNull<Context>);
@@ -600,6 +640,38 @@ extern "C" {
                                  output_pubkey: *mut PublicKey,
                                  keypair: *const Keypair)
                                  -> c_int;
+    
+    // Elligator Swift
+    #[cfg_attr(not(rust_secp_no_symbol_renaming), link_name = "rustsecp256k1_v0_9_0_ellswift_encode")]
+    pub fn secp256k1_ellswift_encode(ctx: *const Context,
+                                     ell64: *mut c_uchar,
+                                     pubkey: *const PublicKey,
+                                     rnd32: *const c_uchar) 
+                                     -> c_int;
+    
+    #[cfg_attr(not(rust_secp_no_symbol_renaming), link_name = "rustsecp256k1_v0_9_0_ellswift_decode")]
+    pub fn secp256k1_ellswift_decode(ctx: *const Context,
+                                     pubkey: *mut u8,
+                                     ell64: *const c_uchar) 
+                                     -> c_int;
+    
+    #[cfg_attr(not(rust_secp_no_symbol_renaming), link_name = "rustsecp256k1_v0_9_0_ellswift_create")]
+    pub fn secp256k1_ellswift_create(ctx: *const Context,
+                                     ell64: *mut c_uchar,
+                                     seckey32: *const c_uchar,
+                                     aux_rand32: *const c_uchar) 
+                                     -> c_int;
+    
+    #[cfg_attr(not(rust_secp_no_symbol_renaming), link_name = "rustsecp256k1_v0_9_0_ellswift_xdh")]
+    pub fn secp256k1_ellswift_xdh(ctx: *const Context,
+                                  output: *mut c_uchar,
+                                  ell_a64: *const c_uchar,
+                                  ell_b64: *const c_uchar,
+                                  seckey32: *const c_uchar,
+                                  party: c_int,
+                                  hashfp: EllswiftECDHHashFn,
+                                  data: *mut c_void) 
+                                  -> c_int;
 }
 
 #[cfg(not(secp256k1_fuzz))]
